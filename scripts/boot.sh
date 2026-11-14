@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# runs once when a node starts (as root)
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 export DEBIAN_FRONTEND=noninteractive
 
 mkdir -p /etc/vps "$RUN" /data /var/cache/rclone-vps
 chmod 1777 "$RUN"
-printf '%s\n' "$RCLONE_CONF" > "$RCLONE_CONFIG";            chmod 600 "$RCLONE_CONFIG"
-printf '%s\n' "$RESTIC_PASSWORD" > "$RESTIC_PASSWORD_FILE"; chmod 600 "$RESTIC_PASSWORD_FILE"
 
 apt-get update -qq
 apt-get install -y -qq fuse3 restic jq curl rsync tmux python3-pip python3-venv > /dev/null
@@ -15,23 +12,22 @@ curl -fsSL https://rclone.org/install.sh | bash > /dev/null 2>&1 || apt-get inst
 
 grep -q "^user_allow_other" /etc/fuse.conf 2>/dev/null || echo "user_allow_other" >> /etc/fuse.conf
 
-# baseline of manually installed packages (so we can tell what YOU install later)
 apt-mark showmanual | sort > /var/lib/vps-apt-baseline.txt
 
 id dev > /dev/null 2>&1 || useradd -m -u 2000 -s /bin/bash dev
 echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev; chmod 440 /etc/sudoers.d/dev
 
-# ---------- shared Drive storage on /data ----------
 rclone mkdir gdrive:vps/data
-rclone mount gdrive:vps/data /data --daemon --allow-other --uid 2000 --gid 2000 --umask 022 \
+
+nohup rclone mount gdrive:vps/data /data --allow-other --uid 2000 --gid 2000 --umask 022 \
   --vfs-cache-mode full --vfs-cache-max-size 6G --vfs-cache-max-age 24h \
   --dir-cache-time 15s --poll-interval 15s --vfs-write-back 5s \
-  --cache-dir /var/cache/rclone-vps --rc --rc-addr 127.0.0.1:5572 --rc-no-auth
+  --cache-dir /var/cache/rclone-vps --rc --rc-addr 127.0.0.1:5572 --rc-no-auth \
+  --log-file /tmp/rclone-mount.log -v > /dev/null 2>&1 &
 
 for _ in $(seq 1 30); do mountpoint -q /data && break; sleep 1; done
-mountpoint -q /data || { log "Drive mount failed, check RCLONE_CONF"; exit 1; }
+mountpoint -q /data || { log "Drive mount failed"; cat /tmp/rclone-mount.log; exit 1; }
 
-# ---------- restore machine state (home + package list) ----------
 rclone mkdir gdrive:vps/restic
 restic cat config > /dev/null 2>&1 || restic init
 if [ "$(restic snapshots --tag home --json | jq 'length')" -gt 0 ]; then
@@ -64,7 +60,6 @@ fi
 
 install_extras
 
-# ---------- role: standby (waits for handoff) or active ----------
 if [ "${STANDBY:-false}" = "true" ]; then
   echo standby > "$RUN/role"; echo hot > "$RUN/mode"
 else
