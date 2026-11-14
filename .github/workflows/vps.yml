@@ -8,10 +8,10 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: '2,17,32,47 * * * *'
+    - cron: '12,27,42,57 * * * *'
 
 env:
-  MY_ID: "1"
+  MY_ID: "3"
   RING: "sxnaknslniv/Repo-A,sxnaknslniv/Repo-B,sxnaknslniv/Repo-C"
   BRANCH: main
   HANDOFF_MIN: "10"
@@ -38,7 +38,7 @@ jobs:
               for s in in_progress queued; do
                 n=$(curl -sf -H "Authorization: Bearer $PAT" \
                   "https://api.github.com/repos/$repo/actions/runs?status=$s&per_page=1" | jq -r '.total_count // "x"' 2>/dev/null || echo "x")
-                if [ "$n" = "x" ] \vert{}\vert{} [ -z "$n" ]; then
+                if [ "$n" = "x" ] || [ -z "$n" ]; then
                   skip=true
                   echo "::warning::Failed to read $repo (check PAT and RING)"
                   n=0
