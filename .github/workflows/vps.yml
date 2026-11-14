@@ -14,7 +14,7 @@ env:
   MY_ID: "3"
   RING: "sxnaknslniv/Repo-A,sxnaknslniv/Repo-B,sxnaknslniv/Repo-C"
   BRANCH: main
-  HANDOFF_MIN: "10"
+  HANDOFF_MIN: "300"
   PER_CAND_MIN: "12"
   DEADLINE_MIN: "345"
   OVERLAP_SEC: "120"
