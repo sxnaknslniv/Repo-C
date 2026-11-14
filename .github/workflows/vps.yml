@@ -1,0 +1,96 @@
+name: vps
+
+on:
+  workflow_dispatch:
+    inputs:
+      standby:
+        description: "Start as standby and wait for handoff"
+        required: false
+        default: "false"
+  schedule:
+    - cron: '12,27,42,57 * * * *'
+
+env:
+  # ===== CHANGE ONLY THESE IN EACH REPO =====
+  MY_ID: "3"
+  RING: "sxnaknslniv/Repo-A,sxnaknslniv/Repo-B,sxnaknslniv/Repo-C"
+  BRANCH: main
+  # ==========================================
+  HANDOFF_MIN: "300"
+  PER_CAND_MIN: "12"
+  DEADLINE_MIN: "345"
+  OVERLAP_SEC: "120"
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.g.outputs.skip }}
+    steps:
+      - id: g
+        env:
+          PAT: ${{ secrets.PAT }}
+        run: |
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            total=0
+            IFS=',' read -ra R <<< "$RING"
+            for repo in "${R[@]}"; do
+              for s in in_progress queued; do
+                n=$(curl -sf -H "Authorization: Bearer $PAT" \
+                  "https://api.github.com/repos/$repo/actions/runs?status=$s&per_page=1" | jq -r '.total_count // "x"' 2>/dev/null || echo "x")
+                if [ "$n" = "x" ] || [ -z "$n" ]; then
+                  skip=true
+                  echo "::warning::Failed to read $repo (check PAT and RING)"
+                  n=0
+                fi
+                total=$(( total + n ))
+              done
+            done
+            echo "total=$total"
+            [ "$total" -gt 1 ] && skip=true
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record start time and environment
+        run: |
+          sudo mkdir -p /etc/vps
+          sudo chmod 755 /etc/vps
+          {
+            echo "export JOB_START=$(date +%s)"
+            echo "export MY_ID='${MY_ID}'"
+            echo "export RING='${RING}'"
+            echo "export BRANCH='${BRANCH}'"
+            echo "export HANDOFF_MIN='${HANDOFF_MIN}'"
+            echo "export PER_CAND_MIN='${PER_CAND_MIN}'"
+            echo "export DEADLINE_MIN='${DEADLINE_MIN}'"
+            echo "export OVERLAP_SEC='${OVERLAP_SEC}'"
+            echo "export STANDBY='${{ github.event.inputs.standby || 'false' }}'"
+          } | sudo tee /etc/vps/env > /dev/null
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: vps-${{ env.MY_ID }}
+          args: --ssh
+
+      - name: Boot VPS (Drive + Restore + Services)
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+          RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
+        run: sudo -E bash scripts/boot.sh
+
+      - name: Run, Wait, and Handoff
+        env:
+          PAT: ${{ secrets.PAT }}
+        run: sudo -E bash scripts/handoff.sh
