@@ -8,15 +8,13 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: '12,27,42,57 * * * *'
+    - cron: '2,17,32,47 * * * *'
 
 env:
-  # ===== CHANGE ONLY THESE IN EACH REPO =====
-  MY_ID: "3"
+  MY_ID: "1"
   RING: "sxnaknslniv/Repo-A,sxnaknslniv/Repo-B,sxnaknslniv/Repo-C"
   BRANCH: main
-  # ==========================================
-  HANDOFF_MIN: "300"
+  HANDOFF_MIN: "10"
   PER_CAND_MIN: "12"
   DEADLINE_MIN: "345"
   OVERLAP_SEC: "120"
@@ -40,7 +38,7 @@ jobs:
               for s in in_progress queued; do
                 n=$(curl -sf -H "Authorization: Bearer $PAT" \
                   "https://api.github.com/repos/$repo/actions/runs?status=$s&per_page=1" | jq -r '.total_count // "x"' 2>/dev/null || echo "x")
-                if [ "$n" = "x" ] || [ -z "$n" ]; then
+                if [ "$n" = "x" ] \vert{}\vert{} [ -z "$n" ]; then
                   skip=true
                   echo "::warning::Failed to read $repo (check PAT and RING)"
                   n=0
@@ -61,10 +59,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record start time and environment
+      - name: Record start time, env, and secrets
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+          RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
+          PAT: ${{ secrets.PAT }}
         run: |
           sudo mkdir -p /etc/vps
           sudo chmod 755 /etc/vps
+          printf '%s\n' "$RCLONE_CONF" | sudo tee /etc/vps/rclone.conf > /dev/null
+          printf '%s\n' "$RESTIC_PASSWORD" | sudo tee /etc/vps/restic.pw > /dev/null
+          sudo chmod 600 /etc/vps/rclone.conf /etc/vps/restic.pw
           {
             echo "export JOB_START=$(date +%s)"
             echo "export MY_ID='${MY_ID}'"
@@ -75,7 +80,9 @@ jobs:
             echo "export DEADLINE_MIN='${DEADLINE_MIN}'"
             echo "export OVERLAP_SEC='${OVERLAP_SEC}'"
             echo "export STANDBY='${{ github.event.inputs.standby || 'false' }}'"
+            echo "export PAT='${PAT}'"
           } | sudo tee /etc/vps/env > /dev/null
+          sudo chmod 644 /etc/vps/env
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v3
@@ -85,12 +92,10 @@ jobs:
           args: --ssh
 
       - name: Boot VPS (Drive + Restore + Services)
-        env:
-          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
-          RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
-        run: sudo -E bash scripts/boot.sh
+        run: |
+          sudo sed -i 's/\xc2\xa0/ /g' scripts/*.sh scripts/*.py
+          sudo sed -i '/RCLONE_CONF/d; /RESTIC_PASSWORD/d' scripts/boot.sh
+          sudo bash scripts/boot.sh
 
       - name: Run, Wait, and Handoff
-        env:
-          PAT: ${{ secrets.PAT }}
-        run: sudo -E bash scripts/handoff.sh
+        run: sudo bash scripts/handoff.sh
