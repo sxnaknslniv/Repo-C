@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# supervises ~/services/*/run according to /run/vps/mode  (all | hot | stop)
 shopt -s nullglob
 SV=/home/dev/services
 RUN=/run/vps

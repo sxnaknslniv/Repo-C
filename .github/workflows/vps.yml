@@ -82,7 +82,7 @@ jobs:
             echo "export STANDBY='${{ github.event.inputs.standby || 'false' }}'"
             echo "export PAT='${PAT}'"
           } | sudo tee /etc/vps/env > /dev/null
-          sudo chmod 644 /etc/vps/env
+          sudo chmod 600 /etc/vps/env
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v3
@@ -93,9 +93,8 @@ jobs:
 
       - name: Boot VPS (Drive + Restore + Services)
         run: |
-          sudo sed -i 's/\xc2\xa0/ /g' scripts/*.sh scripts/*.py
-          sudo sed -i '/RCLONE_CONF/d; /RESTIC_PASSWORD/d' scripts/boot.sh
+          sudo sed -i 's/\xc2\xa0/ /g; s/\r$//' scripts/*.sh scripts/*.py
           sudo bash scripts/boot.sh
 
       - name: Run, Wait, and Handoff
-        run: sudo bash scripts/handoff.sh
+        run: sudo bash /etc/vps/scripts/handoff.sh

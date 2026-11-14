@@ -10,7 +10,6 @@ RUN=/run/vps
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
-# wait until everything in /data is uploaded to Drive
 flush_data() {
   for _ in $(seq 1 150); do
     q=$(curl -s -X POST http://127.0.0.1:5572/vfs/queue 2>/dev/null | jq '.queue | length' 2>/dev/null)
@@ -20,7 +19,6 @@ flush_data() {
   log "Warning: some files in /data are still uploading to Drive"
 }
 
-# reinstall apt packages from the previous node + run ~/.vps/setup.sh (as user dev)
 install_extras() {
   local f="$HOME_DIR/.vps/apt-extra.txt"
   export DEBIAN_FRONTEND=noninteractive

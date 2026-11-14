@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# runs on the NEW node after the old one froze and took a final backup
 set -uo pipefail
 . "$(dirname "$0")/lib.sh"
 log "Pulling latest snapshot..."

@@ -13,5 +13,4 @@ restic backup "$H" --tag home \
   --exclude "$H/.local/share/Trash" \
   --retry-lock 3m --quiet || exit 1
 
-restic forget --tag home --keep-last 12 --retry-lock 3m --quiet || true
 log "Backup completed successfully"

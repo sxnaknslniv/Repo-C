@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# backup every 10 min (active only); an orphan standby promotes itself after 25 min
 . "$(dirname "$0")/lib.sh"
 START=$(date +%s)
-while sleep 600; do
+N=0
+while sleep 60; do
   role=$(cat "$RUN/role" 2>/dev/null)
   if [ "$role" = active ]; then
-    bash "$SCRIPTS/backup.sh"
+    N=$((N+1))
+    flock -n /run/vps/backup.lock bash "$SCRIPTS/backup.sh" || true
+    if [ $((N % 30)) -eq 0 ]; then
+      flock -n /run/vps/backup.lock restic forget --tag home --keep-last 30 --keep-hourly 24 --keep-daily 7 --retry-lock 3m --quiet || true
+    fi
   elif [ "$role" = standby ] && [ $(( $(date +%s) - START )) -gt 1500 ]; then
     other=0
     for ip in $(tailscale status --json | jq -r '.Peer[]? | select(.Online==true) | select(.HostName|test("^vps-[0-9]+")) | .TailscaleIPs[] | select(startswith("100."))'); do

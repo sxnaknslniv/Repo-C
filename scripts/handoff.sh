@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# بيستنى وقت التسليم، يجرّب الجهاز اللي بعده في الحلقة، ولو فشل يجرّب اللي بعده... وهكذا
 set -uo pipefail
 . "$(dirname "$0")/lib.sh"
 elapsed() { echo $(( $(date +%s) - JOB_START )); }
@@ -27,20 +26,20 @@ discover() {
 
 handoff_to() {
   local ip=$1
-  log "تجميد الخدمات الحصرية + نسخة أخيرة"
+  log "Freezing exclusive services + taking final backup..."
   echo hot > "$RUN/mode"; sleep 10
   flush_data
   bash "$SCRIPTS/backup.sh" || { echo all > "$RUN/mode"; return 1; }
   if curl -sf -X POST --max-time 900 "http://$ip:9001/sync" > /tmp/sync.out; then
     echo retiring > "$RUN/role"
-    log "الجديد بقى active. تداخل ${OVERLAP_SEC} ثانية"
+    log "New node is active. Overlapping for ${OVERLAP_SEC}s..."
     sleep "$OVERLAP_SEC"
     echo stop > "$RUN/mode"; sleep 15
     flush_data
     timeout 240 restic forget --tag home --keep-last 12 --prune --retry-lock 1m --quiet || true
     return 0
   fi
-  log "الـ sync فشل: $(cat /tmp/sync.out 2>/dev/null)"
+  log "Sync failed: $(cat /tmp/sync.out 2>/dev/null)"
   echo all > "$RUN/mode"
   return 1
 }
@@ -53,24 +52,24 @@ while [ "$handed" = 0 ] && [ "$(elapsed)" -lt $((DEADLINE_MIN*60)) ]; do
     repo=${REPOS[$((c-1))]}; host="vps-$c"
     stop_at=$(( $(elapsed) + PER_CAND_MIN*60 )); max=$((DEADLINE_MIN*60))
     [ "$stop_at" -gt "$max" ] && stop_at=$max
-    log "بجرّب $host ($repo)"
-    if [ "$(runs_of "$repo")" -eq 0 ]; then log "dispatch -> $(dispatch "$repo")"; fi
+    log "Trying candidate $host ($repo)"
+    if [ "$(runs_of "$repo")" -eq 0 ]; then log "dispatch -> HTTP $(dispatch "$repo")"; fi
     IP=""
     while [ "$(elapsed)" -lt "$stop_at" ]; do
       ip=$(discover "$host")
       if [ -n "$ip" ] && curl -sf --max-time 5 "http://$ip:9001/ready" > /dev/null; then IP=$ip; break; fi
       sleep 10
     done
-    [ -z "$IP" ] && { log "$host ما جهزش"; continue; }
+    [ -z "$IP" ] && { log "$host did not become ready in time"; continue; }
     if handoff_to "$IP"; then handed=1; break; fi
   done
   [ "$handed" = 0 ] && sleep 30
 done
 
 if [ "$handed" = 1 ]; then
-  log "التسليم تم. الجهاز ده بيقفل."
+  log "Handoff complete. Shutting down this node."
 else
-  log "ما قدرتش أسلّم لحد. هفضل شغال لآخر لحظة (الحارس هيرجّع السلسلة)."
+  log "Could not handoff to any candidate. Staying alive until deadline."
   while [ "$(elapsed)" -lt $((352*60)) ]; do sleep 20; done
   bash "$SCRIPTS/backup.sh" || true
 fi

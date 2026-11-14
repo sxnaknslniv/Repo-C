@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-# tiny control server on the Tailscale IP only: GET /ready, GET /role, POST /sync
 import http.server, os, subprocess, sys
 
 BIND, SCRIPTS = sys.argv[1], sys.argv[2]
 RUN = "/run/vps"
 
-
 class H(http.server.BaseHTTPRequestHandler):
-
     def _send(self, code, body=""):
         b = body.encode()
         self.send_response(code)
@@ -34,6 +31,5 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
-
 
 http.server.ThreadingHTTPServer((BIND, 9001), H).serve_forever()

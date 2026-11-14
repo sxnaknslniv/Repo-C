@@ -5,8 +5,12 @@ export DEBIAN_FRONTEND=noninteractive
 
 MNT=/mnt/vpsdata
 
-mkdir -p /etc/vps "$RUN" "$MNT" /var/cache/rclone-vps
+mkdir -p /etc/vps /etc/vps/scripts "$RUN" "$MNT" /var/cache/rclone-vps
+chmod 755 /etc/vps /etc/vps/scripts
 chmod 1777 "$RUN"
+cp -f "$SCRIPTS"/* /etc/vps/scripts/
+chmod 755 /etc/vps/scripts/*
+SCRIPTS=/etc/vps/scripts
 
 apt-get update -qq
 apt-get install -y -qq fuse3 restic jq curl rsync tmux python3-pip python3-venv > /dev/null
@@ -74,6 +78,7 @@ if ! grep -q NPM_CONFIG_PREFIX "$H/.bashrc" 2>/dev/null; then
   cat >> "$H/.bashrc" << 'RC'
 export NPM_CONFIG_PREFIX=$HOME/.npm-global
 export PATH=$HOME/.npm-global/bin:$HOME/.local/bin:$PATH
+[ "$PWD" = "$HOME" ] && cd "$HOME/downloads" 2>/dev/null || true
 RC
   chown dev:dev "$H/.bashrc"
 fi
@@ -92,7 +97,7 @@ else
 fi
 chmod 666 "$RUN/role" "$RUN/mode"
 
-sudo -u dev -H setsid nohup bash "$SCRIPTS/supervisor.sh" > /tmp/supervisor.log 2>&1 &
+sudo -u dev -H setsid nohup bash "$SCRIPTS/supervisor.sh" >> "$H/.logs/supervisor.log" 2>&1 &
 TSIP=$(tailscale ip -4 | head -1)
 setsid nohup python3 "$SCRIPTS/ctl.py" "$TSIP" "$SCRIPTS" > /tmp/ctl.log 2>&1 &
 setsid nohup bash "$SCRIPTS/periodic.sh" > /tmp/periodic.log 2>&1 &
