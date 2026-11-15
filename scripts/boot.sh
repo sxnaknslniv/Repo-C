@@ -58,10 +58,10 @@ ln -sfn "$MNT" /data
 log "Drive mounted on $MNT (linked as /data)"
 
 rclone mkdir gdrive:vps/restic
-restic cat config > /dev/null 2>&1 || restic init
-if [ "$(restic snapshots --tag home --json | jq 'length')" -gt 0 ]; then
+restic cat config > /dev/null 2>&1 || restic init 2>/dev/null || log "Restic repo already exists, continuing..."
+if [ "$(restic snapshots --tag home --json 2>/dev/null | jq 'length' 2>/dev/null || echo 0)" -gt 0 ]; then
   log "Restoring state from Drive..."
-  restic restore latest --tag home --target / --overwrite if-changed --retry-lock 3m
+  restic restore latest --tag home --target / --overwrite if-changed --retry-lock 3m || log "Restic restore warning (non-fatal)"
 else
   log "First boot: no saved state found"
 fi
